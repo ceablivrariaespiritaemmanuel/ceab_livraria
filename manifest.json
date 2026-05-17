@@ -1,9 +1,9 @@
 {
   "name": "CEAB Livraria Espírita Emmanuel",
-  "short_name": "CEAB - Consulta livros",
+  "short_name": "CEAB",
   "description": "Consulta de títulos e preços",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/ceab_livraria/",
+  "scope": "/ceab_livraria/",
   "display": "fullscreen",
   "orientation": "landscape",
   "background_color": "#F5A020",
