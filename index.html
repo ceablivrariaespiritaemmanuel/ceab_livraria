@@ -759,6 +759,7 @@ function parseOmieCSV(text) {
   const iTit   = headers.findIndex(h => h.includes('titulo') || h.includes('título'));
   const iPreco = headers.findIndex(h => h.includes('preco') || h.includes('preço'));
   const iEst   = headers.findIndex(h => h.includes('estoque'));
+  const iAut   = headers.findIndex(h => h.includes('autor'));   // opcional
   if (iISBN < 0 || iTit < 0 || iPreco < 0 || iEst < 0) return [];
   return lines.slice(1).map(line => {
     const cols = splitLine(line, sep);
@@ -769,7 +770,8 @@ function parseOmieCSV(text) {
     const preco  = parseFloat(get(iPreco).replace(',', '.')) || 0;  // "47,5" → 47.5
     const qtd    = parseInt(get(iEst), 10) || 0;
     if (!titulo || qtd <= 0) return null;                     // esgotado/negativo não aparece
-    return { isbn, titulo, qtd, preco };
+    const autor = iAut >= 0 ? get(iAut) : '';
+    return { isbn, titulo, qtd, preco, autor };
   }).filter(Boolean);
 }
 
