@@ -749,6 +749,7 @@ function isbnValido(isbn) {
 }
 
 let NOVOS = NOVOS_FALLBACK.filter(i => isbnValido(i.isbn));
+let CAPAS = {}; // isbn (só dígitos) → URL de capa vinda do CSV (Brasil API)
 
 function parseOmieCSV(text) {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -760,6 +761,7 @@ function parseOmieCSV(text) {
   const iPreco = headers.findIndex(h => h.includes('preco') || h.includes('preço'));
   const iEst   = headers.findIndex(h => h.includes('estoque'));
   const iAut   = headers.findIndex(h => h.includes('autor'));   // opcional
+  const iCapa  = headers.findIndex(h => h.includes('capa'));    // opcional
   if (iISBN < 0 || iTit < 0 || iPreco < 0 || iEst < 0) return [];
   return lines.slice(1).map(line => {
     const cols = splitLine(line, sep);
@@ -771,7 +773,8 @@ function parseOmieCSV(text) {
     const qtd    = parseInt(get(iEst), 10) || 0;
     if (!titulo || qtd <= 0) return null;                     // esgotado/negativo não aparece
     const autor = iAut >= 0 ? get(iAut) : '';
-    return { isbn, titulo, qtd, preco, autor };
+    const capa  = iCapa >= 0 ? get(iCapa) : '';
+    return { isbn, titulo, qtd, preco, autor, capa };
   }).filter(Boolean);
 }
 
@@ -782,7 +785,9 @@ async function loadNovos() {
     const dados = parseOmieCSV(await res.text());
     if (dados.length > 0) {
       NOVOS = dados;
-      console.log(`✅ Livros novos (Omie): ${dados.length} títulos carregados`);
+      CAPAS = {};
+      dados.forEach(i => { if (i.capa) CAPAS[i.isbn.replace(/\D/g,'')] = i.capa; });
+      console.log(`✅ Livros novos (Omie): ${dados.length} títulos carregados (${Object.keys(CAPAS).length} com capa)`);
     } else {
       console.warn('⚠️ CSV da Omie vazio ou em formato inesperado — usando catálogo embutido');
     }
@@ -847,6 +852,24 @@ async function loadSebo() {
   }
 }
 loadSebo();
+
+// ── Wake Lock: impede a tela de apagar enquanto o app está visível (modo quiosque) ──
+let wakeLock = null;
+async function manterTelaAcesa() {
+  if (!('wakeLock' in navigator)) return; // navegador sem suporte — depende só da config do Android
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    console.log('🔆 Wake Lock ativo — tela não vai apagar');
+    wakeLock.addEventListener('release', () => console.log('Wake Lock liberado'));
+  } catch (e) {
+    console.warn(`Wake Lock indisponível: ${e.message}`);
+  }
+}
+// O sistema libera o lock quando a aba fica oculta; readquire ao voltar
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') manterTelaAcesa();
+});
+manterTelaAcesa();
 loadNovos();
 setInterval(loadNovos, 15 * 60 * 1000);  // recarrega da Omie a cada 15 min (kiosk fica ligado o dia todo)
 setInterval(loadSebo,  15 * 60 * 1000);
@@ -874,14 +897,22 @@ async function fetchCover(isbn) {
   COVER_CACHE[key]='none'; return null;
 }
 async function loadCoverInto(elementId, isbn) {
-  const url = await fetchCover(isbn);
-  if (!url) return;
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  const img = new Image();
-  img.onload = () => { el.innerHTML += `<img class="cover loaded" src="${url}" alt="">`; };
-  img.onerror = () => {};
-  img.src = url;
+  const tryShow = url => new Promise(resolve => {
+    if (!url) return resolve(false);
+    const img = new Image();
+    img.onload = () => {
+      const el = document.getElementById(elementId);
+      if (el) el.innerHTML += `<img class="cover loaded" src="${url}" alt="">`;
+      resolve(true);
+    };
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+  // 1ª tentativa: capa vinda do CSV (Brasil API, cacheada na planilha)
+  const key = (isbn || '').replace(/\D/g,'');
+  if (await tryShow(CAPAS[key])) return;
+  // 2ª tentativa: Google Books → Open Library (fluxo original)
+  await tryShow(await fetchCover(isbn));
 }
 
 function isISBN(v) { return /^[\d\s\-]+$/.test(v) && v.replace(/\D/g,'').length >= 6; }
