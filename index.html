@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="light only">
+<style>:root { color-scheme: light only; }</style>
 <title>CEAB · Consulta de Livros</title>
 
 <!-- PWA Manifest — habilita tela cheia ao adicionar à tela inicial -->
@@ -51,7 +53,7 @@
   html { font-size: 20px; }
 
   html, body {
-    width:100vw; height:100vh; overflow:hidden;
+    width:100vw; height:100vh; height:100dvh; overflow:hidden;
     background:var(--bg); font-family:'Nunito',sans-serif;
     touch-action: manipulation;
     -webkit-text-size-adjust: 100%;
@@ -192,10 +194,15 @@
 
   /* Results — oculto no hero mode */
   #results {
-    flex: 1; overflow: hidden; display: flex; flex-direction: column;
+    flex: 1; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column;
     padding: 8px 22px 14px; min-height: 0;
     transition: opacity 0.35s ease;
   }
+  /* Barra de rolagem visível quando o conteúdo não couber (ex.: viewport reduzido) */
+  #results::-webkit-scrollbar { width: 12px; }
+  #results::-webkit-scrollbar-track { background: rgba(0,0,0,.06); border-radius: 6px; }
+  #results::-webkit-scrollbar-thumb { background: rgba(107,63,160,.45); border-radius: 6px; }
+  #results::-webkit-scrollbar-thumb:active { background: rgba(107,63,160,.7); }
   body.hero #results {
     opacity: 0;
     pointer-events: none;
@@ -336,31 +343,32 @@
     width:100%;
     flex: 1;
     align-content: stretch;
-    overflow: hidden;
+    overflow: visible;
     min-height: 0;
+    grid-auto-rows: minmax(170px, 1fr);
   }
   /* Layouts adaptativos: cards crescem para ocupar a tela */
   .results-grid.cnt-1 {
     grid-template-columns: minmax(0, 800px);
-    grid-template-rows: 1fr;
+    grid-template-rows: minmax(170px,1fr);
     justify-content: center;
   }
   .results-grid.cnt-2 {
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
+    grid-template-rows: minmax(170px,1fr);
   }
   .results-grid.cnt-3 {
     grid-template-columns: 1fr 1fr 1fr;
-    grid-template-rows: 1fr;
+    grid-template-rows: minmax(170px,1fr);
   }
   .results-grid.cnt-4 {
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: minmax(170px,1fr) minmax(170px,1fr);
   }
   .results-grid.cnt-5,
   .results-grid.cnt-6 {
     grid-template-columns: 1fr 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: minmax(170px,1fr) minmax(170px,1fr);
   }
 
   /* Card horizontal — capa esquerda, conteúdo direita */
@@ -852,6 +860,26 @@ async function loadSebo() {
   }
 }
 loadSebo();
+
+// ── Leitor de código de barras: limpa a busca anterior automaticamente ──
+// O leitor "digita" muito rápido (< 100ms entre teclas) e finaliza com Enter.
+// Se a sequência rápida for um código de 8–13 dígitos, ela substitui o que
+// estava no campo — sem concatenar com texto digitado antes.
+let scanBuf = '', scanLastTs = 0;
+document.addEventListener('keydown', e => {
+  const now = Date.now();
+  if (e.key && e.key.length === 1) {
+    if (now - scanLastTs > 100) scanBuf = '';  // pausa longa = digitação humana
+    scanBuf += e.key;
+    scanLastTs = now;
+  } else if (e.key === 'Enter') {
+    if (/^\d{8,13}$/.test(scanBuf) && inputEl.value !== scanBuf) {
+      inputEl.value = scanBuf;  // descarta o texto antigo, fica só o código lido
+      onInput();
+    }
+    scanBuf = '';
+  }
+}, true); // fase de captura: roda ANTES do Enter disparar a busca
 
 // ── Wake Lock: impede a tela de apagar enquanto o app está visível (modo quiosque) ──
 let wakeLock = null;
